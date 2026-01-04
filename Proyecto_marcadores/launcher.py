@@ -1,7 +1,7 @@
 import os
+import sys
+import subprocess
 from utils import validar_netscape
-import GeneradorConfig
-import OrganizadorBookmarks
 
 def mostrar_ayuda():
     print("\n" + "?"*45)
@@ -9,43 +9,132 @@ def mostrar_ayuda():
     print("?"*45)
     print("1. Carga tu archivo HTML primero.")
     print("2. Genera el borrador para ver tus carpetas.")
-    print("3. Edita 'config_GENERADO.txt' y cámbiale")
-    print("   el nombre a 'config.txt'.")
-    print("4. Ejecuta el Organizador para terminar.")
+    print("3. Edita 'config_GENERADO.txt' y renómbralo a 'config.txt'.")
+    print("4. El validador se puede usar solo o dentro del generador.")
+    print("5. Ejecuta el Organizador para terminar.")
     print("?"*45 + "\n")
 
 def menu():
     path_html = None
+    
     while True:
+        # Detectamos qué herramientas están presentes
+        herramientas = {
+            "generador": os.path.exists("GeneradorConfig.py"),
+            "organizador": os.path.exists("OrganizadorBookmarks.py"),
+            "validador": os.path.exists("ValidadorLinks.py")
+        }
+
+        os.system('cls' if os.name == 'nt' else 'clear')
         print("\n" + "="*40)
-        print("   GESTOR DE MARCADORES")
+        print("   GESTOR DE MARCADORES DINÁMICO")
         print("="*40)
         print(f" ARCHIVO: {os.path.basename(path_html) if path_html else 'Ninguno'}")
         print("-"*40)
-        print("1. Seleccionar archivo HTML")
-        print("2. Generar borrador de configuración")
-        print("3. Ejecutar Organizador (Usar config.txt)")
-        print("4. Ayuda")
-        print("5. Salir")
         
-        op = input("\nSelecciona (1-5): ")
+        print("1. Seleccionar archivo HTML")
+        
+        status_gen = "[OK]" if herramientas["generador"] else "[NO DISPONIBLE]"
+        print(f"2. Generar borrador de configuración {status_gen}")
+        
+        status_org = "[OK]" if herramientas["organizador"] else "[NO DISPONIBLE]"
+        print(f"3. Ejecutar Organizador (Usar config.txt) {status_org}")
+
+        status_val = "[OK]" if herramientas["validador"] else "[NO DISPONIBLE]"
+        print(f"4. Solo Validar Links (Chequeo rápido) {status_val}")
+        
+        print("5. Ayuda")
+        print("6. Salir")
+        
+        op = input("\nSelecciona (1-6): ")
         
         if op == "1":
             path = input("Arrastra el HTML aquí: ").strip('"').strip("'")
             valido, msg = validar_netscape(path)
             if valido:
                 path_html = path
-                print("✅ Archivo cargado.")
-            else: print(msg)
+                print("\n✅ Archivo cargado.")
+            else: 
+                print(msg)
+            input("\nPresiona Enter...")
+
         elif op == "2":
-            if path_html: GeneradorConfig.main(path_html)
-            else: print("⚠️ Carga un HTML primero.")
+            if herramientas["generador"] and path_html:
+                import GeneradorConfig
+                GeneradorConfig.main(path_html)
+            elif not herramientas["generador"]: print("❌ Script no encontrado.")
+            else: print("\n⚠️ Carga un HTML primero.")
+            input("\nPresiona Enter...")
+
         elif op == "3":
-            if path_html: OrganizadorBookmarks.main(path_html)
-            else: print("⚠️ Carga un HTML primero.")
-        elif op == "4": mostrar_ayuda()
-        elif op == "5": break
-        else: print("❌ Opción no válida.")
+            if herramientas["organizador"] and path_html:
+                if os.path.exists("config.txt"):
+                    import OrganizadorBookmarks
+                    OrganizadorBookmarks.main(path_html)
+                else: print("\n⚠️ Falta 'config.txt'.")
+            elif not herramientas["organizador"]: print("❌ Script no encontrado.")
+            else: print("\n⚠️ Carga un HTML primero.")
+            input("\nPresiona Enter...")
+
+        elif op == "4":
+            if herramientas["validador"]:
+                import ValidadorLinks
+                print("\n" + "-"*40)
+                print("   MODO VALIDADOR")
+                print("-"*40)
+                print("1. Validar TODOS los links del HTML cargado")
+                print("2. Validar UN SOLO LINK manualmente")
+                print("3. Volver al menú principal")
+                sub_op = input("\nSelecciona (1-3): ")
+
+                if sub_op == "1":
+                    if path_html:
+                        from GeneradorConfig import obtener_lista_para_validar
+                        from bs4 import BeautifulSoup
+                        with open(path_html, 'r', encoding='utf-8', errors='ignore') as f:
+                            soup = BeautifulSoup(f, 'html.parser')
+                        lista = obtener_lista_para_validar(soup)
+                        print("\n1. Modo Paciente | 2. Modo Turbo")
+                        m = input("Modo: ")
+                        if m == '2': 
+                            ValidadorLinks.validar_lista_modo_turbo(lista)
+                        elif m == '1': 
+                            ValidadorLinks.validar_lista_modo_paciente(lista)
+                        else:
+                            print("❌ Modo de validación no válido.")
+                    else:
+                        print("⚠️ Carga un HTML primero para esta opción.")
+                
+                elif sub_op == "2":
+                    url_manual = input("Pega la URL a validar: ").strip()
+                    if url_manual:
+                        print(f"\n🔍 Verificando conexión...")
+                        # El validador ahora se encarga de probar http/https
+                        res = ValidadorLinks.validar_un_link({'nombre': 'Manual', 'url': url_manual})
+                        
+                        # Mostramos qué URL terminó funcionando
+                        print(f"\nURL final: {res['url']}")
+                        print(f"RESULTADO: {res['estado']}")
+                    else:
+                        print("❌ URL vacía.")
+                
+                elif sub_op == "3":
+                    continue  # Salta el resto del código y vuelve al inicio del 'while' del menú
+
+                else:
+                    print("❌ Opción de sub-menú no válida.")
+            else:
+                print("❌ Script 'ValidadorLinks.py' no encontrado.")
+            input("\nPresiona Enter para continuar...")
+
+        elif op == "5": 
+            mostrar_ayuda()
+            input("Presiona Enter...")
+            
+        elif op == "6": break
+        else: 
+            print("❌ Opción no válida.")
+            input("Presiona Enter...")
 
 if __name__ == "__main__":
     menu()
