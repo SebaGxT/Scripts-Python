@@ -74,18 +74,31 @@ def menu():
             if herramientas["generador"] and lista_paths:
                 import GeneradorConfig
                 # Adaptamos para que reciba la lista completa
-                GeneradorConfig.main(lista_paths)
-            elif not herramientas["generador"]: print("\n❌ Script no encontrado.")
-            else: print("\n⚠️ Selecciona al menos un HTML primero.")
-            input("\nPresiona Enter...")
+                try:
+                    GeneradorConfig.main(lista_paths)
+                except KeyboardInterrupt:
+                    # Esto atrapa el Ctrl+C y evita que el programa falle
+                    print("\n\n [!] Operación cancelada por el usuario. Volviendo al menú...")
+                except Exception as e:
+                    # Esto atrapa cualquier otro error inesperado para que no se cierre el Launcher
+                    print(f"\n❌ Error crítico en el generador: {e}")
+            elif not herramientas["generador"]: 
+                print("\n❌ Script no encontrado.")
+            else: 
+                print("\n⚠️ Selecciona al menos un HTML primero.")
+            
+            input("\nPresiona Enter para continuar...")
 
         elif op == "3":
             if herramientas["organizador"] and lista_paths:
                 if os.path.exists("config.txt"):
                     import OrganizadorBookmarks
-                    # El organizador procesará la lista y el config.txt
-                    OrganizadorBookmarks.main(lista_paths)
-                else: print("\n⚠️ Falta 'config.txt'.")
+                    try:
+                        OrganizadorBookmarks.main(lista_paths)
+                    except KeyboardInterrupt:
+                        print("\n\n [!] Organización cancelada. Regresando al menú...")
+                else: 
+                    print("\n⚠️ Falta 'config.txt'.")
             elif not herramientas["organizador"]: print("\n❌ Script no encontrado.")
             else: print("\n⚠️ Selecciona al menos un HTML primero.")
             input("\nPresiona Enter...")
@@ -114,7 +127,6 @@ def menu():
                                     soup = BeautifulSoup(f, 'html.parser')
                                     lista_total.extend(obtener_lista_para_validar(soup))
                             
-                            # Quitar duplicados por URL antes de validar para ahorrar tiempo
                             lista_unica = list({v['url']:v for v in lista_total}.values())
                             print(f"\n📦 Total de links únicos a validar: {len(lista_unica)}")
 
@@ -122,11 +134,13 @@ def menu():
                             m = input("\nModo: ")
                             
                             resultados = []
-                            if m == '2': resultados = ValidadorLinks.validar_lista_modo_turbo(lista_unica)
-                            elif m == '1': resultados = ValidadorLinks.validar_lista_modo_paciente(lista_unica)
+                            # Las siguientes líneas son las que más tardan:
+                            if m == '2': 
+                                resultados = ValidadorLinks.validar_lista_modo_turbo(lista_unica)
+                            elif m == '1': 
+                                resultados = ValidadorLinks.validar_lista_modo_paciente(lista_unica)
                             
                             if resultados:
-                                # El reporte se guarda donde está el primer HTML
                                 ruta_reporte = os.path.join(os.path.dirname(lista_paths[0]), "REPORTE_GLOBAL.txt")
                                 with open(ruta_reporte, "w", encoding="utf-8") as f:
                                     f.write("REPORTE GLOBAL DE VALIDACIÓN\n")
@@ -135,16 +149,23 @@ def menu():
                                     for res in resultados:
                                         f.write(f"[{res['estado']}] {res['nombre']} -> {res['url']}\n")
                                 print(f"\n📄 Reporte generado en: {ruta_reporte}")
+
+                        except KeyboardInterrupt:
+                            print("\n\n [!] Validación masiva cancelada por el usuario. No se guardó el reporte.")
                         except Exception as e:
-                            print(f"\n❌ Error: {e}")
+                            print(f"\n❌ Error durante la validación: {e}")
                     else:
                         print("\n⚠️ Selecciona archivos primero.")
                 
                 elif sub_op == "2":
                     url_manual = input("URL a validar: ").strip()
                     if url_manual:
-                        res = ValidadorLinks.validar_un_link({'nombre': 'Manual', 'url': url_manual})
-                        print(f"\nRESULTADO: {res['estado']} | URL: {res['url']}")
+                        try:
+                            res = ValidadorLinks.validar_un_link({'nombre': 'Manual', 'url': url_manual})
+                            print(f"\nRESULTADO: {res['estado']} | URL: {res['url']}")
+                        except KeyboardInterrupt:
+                            print("\n [!] Cancelado.")
+
             input("\nPresiona Enter...")
 
         elif op == "5": 
