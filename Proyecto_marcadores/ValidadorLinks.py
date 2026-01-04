@@ -1,44 +1,45 @@
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Definimos una identidad de navegador para evitar bloqueos 403 (Forbidden)
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-}
-
 def validar_un_link(marcador):
-    """Prueba una URL intentando HTTPS y luego HTTP, usando headers de navegador."""
+    """Versión optimizada para evitar falsos 400/403 en sitios como WhatsApp."""
     url_original = marcador.get('url', '').strip()
     
-    # Determinamos protocolos a probar
-    if url_original.startswith(('http://', 'https://')):
-        protocolos_a_probar = [url_original]
-    else:
-        protocolos_a_probar = [f"https://{url_original}", f"http://{url_original}"]
+    # Headers extendidos para máxima compatibilidad
+    headers_pro = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Referer': 'https://www.google.com/',
+        'Connection': 'keep-alive'
+    }
+
+    protocolos = [url_original] if url_original.startswith(('http://', 'https://')) else [f"https://{url_original}", f"http://{url_original}"]
 
     ultimo_error = ""
-    for url in protocolos_a_probar:
+    for url in protocolos:
         try:
-            # 1. Intentamos HEAD (más rápido) con Headers de navegador
-            response = requests.head(url, timeout=7, headers=HEADERS, allow_redirects=True)
+            # Intento 1: HEAD (Rápido)
+            res = requests.head(url, timeout=8, headers=headers_pro, allow_redirects=True)
             
-            # 2. Si falla (muchos sitios bloquean HEAD), intentamos GET
-            if response.status_code >= 400:
-                response = requests.get(url, timeout=7, headers=HEADERS, stream=True, allow_redirects=True)
+            # Intento 2: Si el HEAD falla o da error de cliente (400, 403, 405)
+            if res.status_code >= 400:
+                res = requests.get(url, timeout=8, headers=headers_pro, stream=True, allow_redirects=True)
             
-            if response.status_code < 400:
+            if res.status_code < 400:
                 return {**marcador, "url": url, "estado": "ACTIVO"}
             
-            # Si el error es 403, lo marcamos como Dudoso (el sitio está vivo pero bloquea bots)
-            if response.status_code == 403:
-                ultimo_error = "DUDOSO (403 - Protegido)"
+            # --- AFINAMIENTO DE ERRORES ---
+            if res.status_code in [400, 403, 405]:
+                # Si llegamos aquí, el servidor respondió, por lo tanto el link NO está caído.
+                # Está "Protegido" contra bots.
+                return {**marcador, "url": url, "estado": "ACTIVO (Protegido)"}
             else:
-                ultimo_error = f"CAIDO ({response.status_code})"
+                ultimo_error = f"CAIDO ({res.status_code})"
                 
         except Exception:
-            ultimo_error = "ERROR (No responde)"
-            continue # Probar el siguiente protocolo
+            ultimo_error = "ERROR (Timeout/DNS)"
+            continue
 
     return {**marcador, "estado": ultimo_error}
 

@@ -5,16 +5,14 @@ import ValidadorLinks
 
 def extraer_estructura(soup, resultados_validados=None):
     """
-    Recorre los elementos y genera las líneas. 
-    Mantiene el rastro de la carpeta actual para clasificar los errores.
+    Clasifica links en: Activos, Caídos (Borrar) y Bloqueados (Revisar).
     """
     lineas = []
-    caidos_por_carpeta = {} 
+    caidos_por_carpeta = {}      # Links con errores 404, 500, etc.
+    bloqueados_por_carpeta = {}   # Links con 400, 403 (ej. WhatsApp)
     carpeta_actual = "Raíz"
     
-    # Mapeamos los estados. Si no hubo validación, mapa_estados será un dict vacío.
     mapa_estados = {res['url']: res['estado'] for res in resultados_validados} if resultados_validados else {}
-
     elementos = soup.find_all(['h3', 'a'])
     
     for el in elementos:
@@ -23,30 +21,37 @@ def extraer_estructura(soup, resultados_validados=None):
             lineas.append(f"C: {carpeta_actual}")
         elif el.name == 'a':
             url = el.get('href', '')
-            # Limpiamos el nombre de comas para evitar conflictos en el futuro
-            nombre = el.get_text().strip().replace(',', '')
-            if not nombre: 
-                nombre = url[:30]
-            
+            nombre = el.get_text().strip().replace(',', '') or url[:30]
             estado = mapa_estados.get(url, "ACTIVO")
             
-            # --- MEJORA: Incluimos DUDOSO en la revisión ---
-            if any(palabra in estado for palabra in ["CAIDO", "ERROR", "DUDOSO"]):
-                if carpeta_actual not in caidos_por_carpeta:
-                    caidos_por_carpeta[carpeta_actual] = []
-                # Guardamos el formato con el pipe para que el Organizador sepa que es un caído
+            # --- CLASIFICACIÓN TRIPLE ---
+            if any(p in estado for p in ["CAIDO", "ERROR"]):
+                if carpeta_actual not in caidos_por_carpeta: caidos_por_carpeta[carpeta_actual] = []
                 caidos_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
+            
+            elif "Protegido" in estado or "DUDOSO" in estado:
+                if carpeta_actual not in bloqueados_por_carpeta: bloqueados_por_carpeta[carpeta_actual] = []
+                bloqueados_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
+            
             else:
                 lineas.append(f"    K: {nombre}")
 
-    # --- SECCIÓN DE REVISIÓN ORGANIZADA ---
+    # --- SECCIÓN A: LINKS CAÍDOS (Para Borrar) ---
     if caidos_por_carpeta:
-        lineas.append("\n" + "#" * 45)
-        lineas.append("C: REVISAR - LINKS CAIDOS O CON DUDAS")
-        lineas.append("#" * 45)
-        
-        for carpeta_origen, links in caidos_por_carpeta.items():
-            lineas.append(f"  C: Origen - {carpeta_origen}")
+        lineas.append("\n" + "!"*45)
+        lineas.append("C: REVISAR - LINKS CAIDOS (PROBABLE BORRADO)")
+        lineas.append("!"*45)
+        for origen, links in caidos_por_carpeta.items():
+            lineas.append(f"  C: Origen Caído - {origen}")
+            lineas.extend(links)
+
+    # --- SECCIÓN B: LINKS BLOQUEADOS (Probablemente Activos) ---
+    if bloqueados_por_carpeta:
+        lineas.append("\n" + "?"*45)
+        lineas.append("C: REVISAR - LINKS BLOQUEADOS (VERIFICAR MANUAL)")
+        lineas.append("?"*45)
+        for origen, links in bloqueados_por_carpeta.items():
+            lineas.append(f"  C: Origen Bloqueado - {origen}")
             lineas.extend(links)
         
     return lineas
