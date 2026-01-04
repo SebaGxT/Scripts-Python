@@ -49,7 +49,7 @@ def menu():
         op = input("\nSelecciona (1-6): ")
         
         if op == "1":
-            path = input("Arrastra el HTML aquí: ").strip('"').strip("'")
+            path = input("\nArrastra el HTML aquí: ").strip('"').strip("'")
             valido, msg = validar_netscape(path)
             if valido:
                 path_html = path
@@ -62,7 +62,7 @@ def menu():
             if herramientas["generador"] and path_html:
                 import GeneradorConfig
                 GeneradorConfig.main(path_html)
-            elif not herramientas["generador"]: print("❌ Script no encontrado.")
+            elif not herramientas["generador"]: print("\n❌ Script no encontrado.")
             else: print("\n⚠️ Carga un HTML primero.")
             input("\nPresiona Enter...")
 
@@ -72,7 +72,7 @@ def menu():
                     import OrganizadorBookmarks
                     OrganizadorBookmarks.main(path_html)
                 else: print("\n⚠️ Falta 'config.txt'.")
-            elif not herramientas["organizador"]: print("❌ Script no encontrado.")
+            elif not herramientas["organizador"]: print("\n❌ Script no encontrado.")
             else: print("\n⚠️ Carga un HTML primero.")
             input("\nPresiona Enter...")
 
@@ -92,33 +92,41 @@ def menu():
                         try:
                             from GeneradorConfig import obtener_lista_para_validar
                             from bs4 import BeautifulSoup
+                            
                             with open(path_html, 'r', encoding='utf-8', errors='ignore') as f:
                                 soup = BeautifulSoup(f, 'html.parser')
                             
                             lista = obtener_lista_para_validar(soup)
-                            print("\n1. Modo Paciente | 2. Modo Turbo")
-                            m = input("Modo: ")
+                            print("\n1. Modo Paciente (con barra gráfica) | 2. Modo Turbo")
+                            m = input("\nModo: ")
                             
-                            resultados = [] # Variable para capturar el retorno
+                            resultados = []
                             if m == '2': 
                                 resultados = ValidadorLinks.validar_lista_modo_turbo(lista)
                             elif m == '1': 
                                 resultados = ValidadorLinks.validar_lista_modo_paciente(lista)
                             else:
-                                print("❌ Modo de validación no válido.")
-                                continue # Usamos continue para no seguir si el modo es error
+                                print("\n❌ Modo de validación no válido.")
+                                continue
 
-                            # OPCIONAL: Guardar un pequeño reporte de la validación
                             if resultados:
-                                with open("ultimo_reporte_validacion.txt", "w", encoding="utf-8") as f:
+                                # Determinamos la carpeta del HTML para guardar el reporte allí
+                                carpeta_html = os.path.dirname(os.path.abspath(path_html))
+                                ruta_reporte = os.path.join(carpeta_html, "REPORTE_VALIDACION.txt")
+                                
+                                with open(ruta_reporte, "w", encoding="utf-8") as f:
+                                    f.write(f"REPORTE DE VALIDACIÓN - {os.path.basename(path_html)}\n")
+                                    f.write("="*60 + "\n\n")
                                     for res in resultados:
                                         f.write(f"[{res['estado']}] {res['nombre']} -> {res['url']}\n")
-                                print(f"\n📄 Se ha generado 'ultimo_reporte_validacion.txt' con los detalles.")
+                                
+                                print(f"\n✅ Proceso terminado con éxito.")
+                                print(f"\n📄 Reporte generado en: {ruta_reporte}")
 
                         except KeyboardInterrupt:
                             print("\n🛑 Validación interrumpida. Regresando al menú principal...")
                     else:
-                        print("⚠️ Carga un HTML primero para esta opción.")
+                        print("\n⚠️ Carga un HTML primero para esta opción.")
                 
                 elif sub_op == "2":
                     url_manual = input("Pega la URL a validar: ").strip()
@@ -131,15 +139,15 @@ def menu():
                         print(f"\nURL final: {res['url']}")
                         print(f"RESULTADO: {res['estado']}")
                     else:
-                        print("❌ URL vacía.")
+                        print("\n❌ URL vacía.")
                 
                 elif sub_op == "3":
                     continue  # Salta el resto del código y vuelve al inicio del 'while' del menú
 
                 else:
-                    print("❌ Opción de sub-menú no válida.")
+                    print("\n❌ Opción de sub-menú no válida.")
             else:
-                print("❌ Script 'ValidadorLinks.py' no encontrado.")
+                print("\n❌ Script 'ValidadorLinks.py' no encontrado.")
             input("\nPresiona Enter para continuar...")
 
         elif op == "5": 
@@ -148,8 +156,8 @@ def menu():
             
         elif op == "6": break
         else: 
-            print("❌ Opción no válida.")
-            input("Presiona Enter...")
+            print("\n❌ Opción no válida.")
+            input("\nPresiona Enter...")
 
 if __name__ == "__main__":
     menu()

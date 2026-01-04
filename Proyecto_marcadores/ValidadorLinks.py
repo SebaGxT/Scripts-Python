@@ -1,5 +1,5 @@
 import requests
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def validar_un_link(marcador):
     """Prueba una URL intentando HTTPS y luego HTTP si es necesario."""
@@ -55,7 +55,7 @@ def validar_lista_modo_paciente(lista_marcadores):
             
     except KeyboardInterrupt:
         print(f"\n\n⚠️  Proceso cancelado por el usuario.")
-        print(f"✅ Se guardaron {len(resultados)} links validados.")
+        print(f"\n✅ Se guardaron {len(resultados)} links validados.")
     
     # Rellenar los no procesados para no perderlos
     if len(resultados) < total:
@@ -68,9 +68,45 @@ def validar_lista_modo_paciente(lista_marcadores):
     return resultados
 
 def validar_lista_modo_turbo(lista_marcadores):
-    """Opción B: Muchos a la vez."""
-    print(f"🚀 Iniciando validación turbo de {len(lista_marcadores)} links...")
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        resultados = list(executor.map(validar_un_link, lista_marcadores))
-    print("✅ Validación turbo finalizada.")
+    """Opción B: Muchos a la vez con contador de progreso dinámico."""
+    total = len(lista_marcadores)
+    resultados = []
+    completados = 0
+    ancho_barra = 30
+
+    print(f"\n🚀 Iniciando validación turbo de {total} links...")
+    print("\nℹ️  Modo Turbo: Procesando en paralelo (10 hilos).\n")
+
+     # Usamos el context manager pero con un truco para cancelar
+    executor = ThreadPoolExecutor(max_workers=10)
+    # Creamos un diccionario para rastrear qué marcador pertenece a qué futuro
+    futuro_a_marcador = {executor.submit(validar_un_link, m): m for m in lista_marcadores}
+    
+    try:
+        # as_completed nos da los resultados a medida que van saliendo
+        for futuro in as_completed(futuro_a_marcador):
+            resultado = futuro.result()
+            resultados.append(resultado)
+            completados += 1
+            
+            porcentaje = (completados / total) * 100
+            bloques = int((completados / total) * ancho_barra)
+            barra = "█" * bloques + "-" * (ancho_barra - bloques)
+            print(f"\r⚡ TURBO [{barra}] {porcentaje:.1f}% ({completados}/{total})", end="")
+
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Interrupción detectada. Cancelando tareas pendientes inmediatamente...")
+        # wait=False es la clave: no espera a que los hilos terminen
+        executor.shutdown(wait=False, cancel_futures=True)
+        
+        # Identificamos qué URLs procesamos para marcar el resto como SIN VALIDAR
+        urls_procesadas = {r['url'] for r in resultados}
+        for m in lista_marcadores:
+            if m['url'] not in urls_procesadas:
+                resultados.append({**m, "estado": "SIN VALIDAR"})
+    else:
+        # Si todo termina normal, cerramos limpio
+        executor.shutdown(wait=True)
+
+    print("\n\n✅ Finalizado.")
     return resultados

@@ -70,7 +70,7 @@ def main(path_html_directo=None):
         path_in, path_conf, _ = gestionar_rutas("generador")
     
     if not path_in or not os.path.exists(path_in):
-        print(f"❌ No se encontró el archivo de entrada en: {path_in}")
+        print(f"\n❌ No se encontró el archivo de entrada en: {path_in}")
         return
     
     try:
@@ -80,7 +80,7 @@ def main(path_html_directo=None):
         dl_principal = soup.find('dl') or soup.find('DL')
 
         if not dl_principal:
-            print("❌ No se encontró estructura de marcadores.")
+            print("\n❌ No se encontró estructura de marcadores.")
             return
 
         # --- LÓGICA DE VALIDACIÓN OPCIONAL ---
@@ -91,7 +91,7 @@ def main(path_html_directo=None):
             lista_preparada = obtener_lista_para_validar(dl_principal)
             print("\n1. Modo Paciente (Uno por uno)")
             print("2. Modo Turbo (Rápido - recomendado)")
-            modo = input("Selecciona modo (1/2): ")
+            modo = input("\nSelecciona modo (1/2): ")
             
             if modo == '2':
                 resultados = ValidadorLinks.validar_lista_modo_turbo(lista_preparada)
@@ -104,7 +104,7 @@ def main(path_html_directo=None):
         estructura = extraer_estructura(dl_principal, resultados)
         
         if not estructura:
-            print("⚠️ Se leyó el archivo pero la estructura resultó vacía.")
+            print("\n⚠️ Se leyó el archivo pero la estructura resultó vacía.")
             return
 
         with open(path_conf, 'w', encoding='utf-8') as f:
@@ -118,7 +118,7 @@ def main(path_html_directo=None):
         print("   luego ejecuta el Organizador.")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"\n\n❌ Error: {e}")
 
 if __name__ == "__main__":
     main()
