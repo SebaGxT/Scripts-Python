@@ -1,4 +1,9 @@
 @echo off
-:: Llama al python que está DENTRO del entorno virtual directamente
+:: Esto asegura que el script se ejecute en la carpeta donde esta el .bat
+cd /d "%~dp0"
+
+echo Lanzando Organizador de Marcadores...
+:: Usamos el python del entorno virtual directamente
 ".\venv\Scripts\python.exe" Launcher.py
+
 pause
