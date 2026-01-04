@@ -89,19 +89,34 @@ def menu():
 
                 if sub_op == "1":
                     if path_html:
-                        from GeneradorConfig import obtener_lista_para_validar
-                        from bs4 import BeautifulSoup
-                        with open(path_html, 'r', encoding='utf-8', errors='ignore') as f:
-                            soup = BeautifulSoup(f, 'html.parser')
-                        lista = obtener_lista_para_validar(soup)
-                        print("\n1. Modo Paciente | 2. Modo Turbo")
-                        m = input("Modo: ")
-                        if m == '2': 
-                            ValidadorLinks.validar_lista_modo_turbo(lista)
-                        elif m == '1': 
-                            ValidadorLinks.validar_lista_modo_paciente(lista)
-                        else:
-                            print("❌ Modo de validación no válido.")
+                        try:
+                            from GeneradorConfig import obtener_lista_para_validar
+                            from bs4 import BeautifulSoup
+                            with open(path_html, 'r', encoding='utf-8', errors='ignore') as f:
+                                soup = BeautifulSoup(f, 'html.parser')
+                            
+                            lista = obtener_lista_para_validar(soup)
+                            print("\n1. Modo Paciente | 2. Modo Turbo")
+                            m = input("Modo: ")
+                            
+                            resultados = [] # Variable para capturar el retorno
+                            if m == '2': 
+                                resultados = ValidadorLinks.validar_lista_modo_turbo(lista)
+                            elif m == '1': 
+                                resultados = ValidadorLinks.validar_lista_modo_paciente(lista)
+                            else:
+                                print("❌ Modo de validación no válido.")
+                                continue # Usamos continue para no seguir si el modo es error
+
+                            # OPCIONAL: Guardar un pequeño reporte de la validación
+                            if resultados:
+                                with open("ultimo_reporte_validacion.txt", "w", encoding="utf-8") as f:
+                                    for res in resultados:
+                                        f.write(f"[{res['estado']}] {res['nombre']} -> {res['url']}\n")
+                                print(f"\n📄 Se ha generado 'ultimo_reporte_validacion.txt' con los detalles.")
+
+                        except KeyboardInterrupt:
+                            print("\n🛑 Validación interrumpida. Regresando al menú principal...")
                     else:
                         print("⚠️ Carga un HTML primero para esta opción.")
                 

@@ -78,11 +78,11 @@ def main(path_html_directo=None):
 
         # --- LÓGICA DE VALIDACIÓN OPCIONAL ---
         resultados = None
-        respuesta = input("¿Deseas validar si los links están caídos? (S/N): ").lower()
+        respuesta = input("\n¿Deseas validar si los links están caídos? (S/N): ").lower()
         
         if respuesta == 's':
             lista_preparada = obtener_lista_para_validar(dl_principal)
-            print("1. Modo Paciente (Uno por uno)")
+            print("\n1. Modo Paciente (Uno por uno)")
             print("2. Modo Turbo (Rápido - recomendado)")
             modo = input("Selecciona modo (1/2): ")
             

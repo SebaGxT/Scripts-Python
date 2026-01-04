@@ -33,14 +33,29 @@ def validar_un_link(marcador):
     return {**marcador, "estado": ultimo_error}
 
 def validar_lista_modo_paciente(lista_marcadores):
-    """Opción A: Uno por uno."""
+    """Opción A: Uno por uno. Permite cancelar y devolver resultados parciales."""
     resultados = []
     total = len(lista_marcadores)
-    for i, m in enumerate(lista_marcadores, 1):
-        # Limpiamos la línea para que no se amontone el texto
-        print(f"⏳ Chequeando {i}/{total}: {m['nombre'][:30]}...          ", end="\r")
-        resultados.append(validar_un_link(m))
-    print("\n✅ Validación finalizada.")
+    print("\nℹ️  Presiona Ctrl+C para detener y guardar lo que se haya procesado hasta ahora.\n")
+    
+    try:
+        for i, m in enumerate(lista_marcadores, 1):
+            print(f"⏳ Chequeando {i}/{total}: {m['nombre'][:30]}...          ", end="\r")
+            resultados.append(validar_un_link(m))
+    except KeyboardInterrupt:
+        print(f"\n\n⚠️  Proceso cancelado por el usuario.")
+        print(f"✅ Se guardaron {len(resultados)} links validados.")
+    
+    # Si se canceló, los que no se llegaron a procesar se marcan como "SIN VALIDAR"
+    # para no perderlos del archivo final.
+    if len(resultados) < total:
+        print("📦 El resto de los links se mantendrán como 'SIN VALIDAR'.")
+        procesados_urls = {r['url'] for r in resultados}
+        for m in lista_marcadores:
+            if m['url'] not in procesados_urls:
+                resultados.append({**m, "estado": "SIN VALIDAR"})
+
+    print("\n✅ Finalizado.")
     return resultados
 
 def validar_lista_modo_turbo(lista_marcadores):
