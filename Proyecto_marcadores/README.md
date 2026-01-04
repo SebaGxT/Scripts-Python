@@ -19,7 +19,18 @@ Esta suite de herramientas en Python permite gestionar, limpiar y reorganizar ar
 2.  Instalar la librería necesaria:
     ```bash
     pip install beautifulsoup4
+    pip install typing-extensions beautifulsoup4
     ```
+
+---
+
+### 💡 Solución de problemas (Conflictos de Python)
+Si recibes errores de "ModuleNotFoundError" teniendo instalado Python, se recomienda usar un entorno virtual:
+```bash
+python -m venv venv
+source venv/bin/activate  # En Windows: .\venv\Scripts\activate
+pip install beautifulsoup4 typing-extensions
+python Launcher.py
 
 ---
 
