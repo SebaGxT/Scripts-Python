@@ -6,39 +6,46 @@ import ValidadorLinks
 def extraer_estructura(soup, resultados_validados=None):
     """
     Recorre los elementos y genera las líneas. 
-    Si recibe resultados_validados (dict), separa los caídos al final.
+    Mantiene el rastro de la carpeta actual para clasificar los errores.
     """
     lineas = []
-    caidos = []
-    # Creamos un mapa rápido de URL -> Estado para no buscar en lista mil veces
+    caidos_por_carpeta = {} # Diccionario para agrupar: { "Nombre Carpeta": [links...] }
+    carpeta_actual = "Raíz"
+    
     mapa_estados = {res['url']: res['estado'] for res in resultados_validados} if resultados_validados else {}
 
-    # Buscamos todos los H3 (carpetas) y A (links) en el orden en que aparecen
     elementos = soup.find_all(['h3', 'a'])
     
     for el in elementos:
         if el.name == 'h3':
-            # Es una carpeta
-            nombre = el.get_text().strip()
-            lineas.append(f"C: {nombre}")
+            carpeta_actual = el.get_text().strip()
+            lineas.append(f"C: {carpeta_actual}")
         elif el.name == 'a':
-            # Es un marcador
             url = el.get('href', '')
             nombre = el.get_text().strip().replace(',', '')
             if not nombre: 
                 nombre = url[:30]
             
-            # Verificamos si este link fue validado como caído
             estado = mapa_estados.get(url, "ACTIVO")
+            
             if "CAIDO" in estado or "ERROR" in estado:
-                caidos.append(f"    K: {nombre} | {estado} | {url}")
+                # En lugar de una lista simple, guardamos por carpeta de origen
+                if carpeta_actual not in caidos_por_carpeta:
+                    caidos_por_carpeta[carpeta_actual] = []
+                caidos_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
             else:
                 lineas.append(f"    K: {nombre}")
 
-    # Si hubo caídos, creamos la carpeta especial al final del archivo
-    if caidos:
-        lineas.append("\nC: REVISAR - LINKS CAIDOS O ERRORES")
-        lineas.extend(caidos)
+    # --- SECCIÓN DE REVISIÓN ORGANIZADA ---
+    if caidos_por_carpeta:
+        lineas.append("\n" + "#"*40)
+        lineas.append("C: REVISAR - LINKS CAIDOS O ERRORES")
+        lineas.append("#"*40)
+        
+        for carpeta_origen, links in caidos_por_carpeta.items():
+            # Creamos una subcarpeta indicando de dónde venían
+            lineas.append(f"  C: Origen - {carpeta_origen}")
+            lineas.extend(links)
         
     return lineas
 

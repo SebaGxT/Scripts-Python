@@ -33,29 +33,38 @@ def validar_un_link(marcador):
     return {**marcador, "estado": ultimo_error}
 
 def validar_lista_modo_paciente(lista_marcadores):
-    """Opción A: Uno por uno. Permite cancelar y devolver resultados parciales."""
+    """Opción A: Uno por uno con barra de progreso gráfica."""
     resultados = []
     total = len(lista_marcadores)
-    print("\nℹ️  Presiona Ctrl+C para detener y guardar lo que se haya procesado hasta ahora.\n")
+    ancho_barra = 30 # Tamaño de la barra en caracteres
+    
+    print("\nℹ️  Presiona Ctrl+C para detener y guardar lo procesado.\n")
     
     try:
         for i, m in enumerate(lista_marcadores, 1):
-            print(f"⏳ Chequeando {i}/{total}: {m['nombre'][:30]}...          ", end="\r")
+            # Cálculos de progreso
+            porcentaje = (i / total) * 100
+            bloques = int((i / total) * ancho_barra)
+            barra = "█" * bloques + "-" * (ancho_barra - bloques)
+            
+            # Línea de estado: Barra + Porcentaje + Contador + Nombre
+            # El \r al principio y el end="" hacen que la línea se sobrescriba
+            print(f"\r[{barra}] {porcentaje:.1f}% ({i}/{total}) | Chequeando: {m['nombre'][:25]}...          ", end="")
+            
             resultados.append(validar_un_link(m))
+            
     except KeyboardInterrupt:
         print(f"\n\n⚠️  Proceso cancelado por el usuario.")
         print(f"✅ Se guardaron {len(resultados)} links validados.")
     
-    # Si se canceló, los que no se llegaron a procesar se marcan como "SIN VALIDAR"
-    # para no perderlos del archivo final.
+    # Rellenar los no procesados para no perderlos
     if len(resultados) < total:
-        print("📦 El resto de los links se mantendrán como 'SIN VALIDAR'.")
         procesados_urls = {r['url'] for r in resultados}
         for m in lista_marcadores:
             if m['url'] not in procesados_urls:
                 resultados.append({**m, "estado": "SIN VALIDAR"})
 
-    print("\n✅ Finalizado.")
+    print("\n\n✅ Finalizado.")
     return resultados
 
 def validar_lista_modo_turbo(lista_marcadores):
