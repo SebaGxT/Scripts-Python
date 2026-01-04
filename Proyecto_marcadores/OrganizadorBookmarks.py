@@ -3,103 +3,111 @@ from bs4 import BeautifulSoup
 from utils import gestionar_rutas
 
 def parse_config(config_path):
-    tree = []
-    stack = []
+    """
+    Lee el config.txt adaptado a nuestra estructura de C: (Carpeta) y K: (Link).
+    """
+    tree = {}
+    carpeta_actual = "00. Sin Clasificar"
     if not os.path.exists(config_path): return None
+    
     with open(config_path, 'r', encoding='utf-8') as f:
         for line in f:
-            line_content = line.strip()
-            if not line_content or line_content.startswith("#"): continue
-            indent = len(line) - len(line.lstrip())
-            level = indent // 4
-            item_type, name = line_content[:2], line_content[2:].strip()
-            item = {'type': item_type, 'name': name, 'children': [], 'keywords': []}
-            if item_type == 'K:':
-                if stack: stack[-1]['keywords'].extend([k.strip().lower() for k in name.split(',')])
-            else:
-                if level == 0:
-                    tree.append(item)
-                    stack = [item]
-                else:
-                    stack = stack[:level]
-                    if stack:
-                        stack[-1]['children'].append(item)
-                        stack.append(item)
+            line = line.strip()
+            if not line or line.startswith("#"): continue
+            
+            if line.startswith("C: "):
+                carpeta_actual = line[3:].strip()
+                if carpeta_actual not in tree:
+                    tree[carpeta_actual] = []
+            elif line.startswith("K: "):
+                # Extraemos el nombre. Si hay pipes '|', tomamos solo la primera parte
+                contenido = line[3:].strip()
+                nombre_limpio = contenido.split('|')[0].strip()
+                if carpeta_actual not in tree: tree[carpeta_actual] = []
+                tree[carpeta_actual].append(nombre_limpio)
+                
     return tree
 
-def clasificar_link(link_node, tree):
-    texto = (link_node.text + " " + link_node.get('href', '')).lower()
-    def buscar(nodos):
-        for nodo in nodos:
-            sub = buscar(nodo['children'])
-            if sub: return [nodo['name']] + sub
-            if any(k in texto for k in nodo['keywords'] if k): return [nodo['name']]
-        return None
-    return buscar(tree)
-
-def escribir_dl(f, estructura, nivel=1):
-    espacio = "    " * nivel
-    for nombre, contenido in estructura.items():
-        f.write(f'{espacio}<DT><H3>{nombre}</H3>\n{espacio}<DL><p>\n')
-        if isinstance(contenido, dict): escribir_dl(f, contenido, nivel + 1)
-        elif isinstance(contenido, list):
-            for link in contenido: f.write(f'{"    " * (nivel+1)}{str(link)}\n')
-        f.write(f'{espacio}</DL><p>\n')
+def escribir_dl(f, resultado):
+    """Escribe el HTML final respetando las carpetas."""
+    for carpeta, links in resultado.items():
+        f.write(f'    <DT><H3>{carpeta}</H3>\n    <DL><p>\n')
+        for link in links:
+            # 'link' ya es un objeto de BeautifulSoup, str(link) devuelve el HTML <A HREF="...">...</a>
+            f.write(f'        <DT>{str(link)}\n')
+        f.write(f'    </DL><p>\n')
 
 def main(path_html_directo=None):
     if path_html_directo:
         path_in = path_html_directo
         base_dir = os.path.dirname(os.path.abspath(path_in))
         path_config = os.path.join(base_dir, "config.txt")
-        path_out = os.path.join(base_dir, "favoritos_REORGANIZADOS.html")
+        path_out = os.path.join(base_dir, "Favoritos_ORGANIZADOS.html")
     else:
         path_in, path_config, path_out = gestionar_rutas("organizador")
 
     if not path_in or not os.path.exists(path_config):
-        print(f"❌ Error: No se encuentra el archivo config.txt en {path_config}")
+        print(f"❌ Error: No se encuentra 'config.txt' en {path_config}")
         return
 
-    tree = parse_config(path_config)
-    with open(path_in, 'r', encoding='utf-8') as f:
+    # 1. Cargar la estructura deseada desde el config
+    mapeo_deseado = parse_config(path_config)
+    
+    # 2. Leer el HTML original para tener los objetos de los links
+    with open(path_in, 'r', encoding='utf-8', errors='ignore') as f:
         soup = BeautifulSoup(f, 'html.parser')
     
-    vistos, resultado = set(), {}
-    stats = {"procesados": 0, "eliminados": 0, "clasificados": 0, "sin_clase": 0}
+    # Creamos un diccionario de búsqueda rápida: { "Nombre del Link": Objeto_BeautifulSoup }
+    biblioteca_links = {}
+    for a in soup.find_all('a'):
+        nombre = a.get_text().strip()
+        if nombre not in biblioteca_links:
+            biblioteca_links[nombre] = a
 
-    for link in soup.find_all('a'):
-        url = link.get('href')
-        stats["procesados"] += 1
-        if url in vistos:
-            stats["eliminados"] += 1
-            continue
-        vistos.add(url)
-        
-        ruta = clasificar_link(link, tree)
-        if ruta:
-            stats["clasificados"] += 1
-        else:
-            ruta = ["00. Sin Clasificar"]
-            stats["sin_clase"] += 1
-        
-        actual = resultado
-        for i, carpeta in enumerate(ruta):
-            if carpeta not in actual: actual[carpeta] = {} if i < len(ruta)-1 else []
-            actual = actual[carpeta]
-        if isinstance(actual, list): actual.append(link)
+    vistos = set()
+    resultado_final = {}
+    stats = {"procesados": 0, "eliminados": 0, "organizados": 0, "sin_config": 0}
 
+    # 3. Construir el resultado basado en el orden del config.txt
+    for carpeta, nombres_en_config in mapeo_deseado.items():
+        resultado_final[carpeta] = []
+        for nombre in nombres_en_config:
+            stats["procesados"] += 1
+            
+            # Buscar el objeto original por nombre
+            link_obj = biblioteca_links.get(nombre)
+            
+            if link_obj:
+                url = link_obj.get('href')
+                # --- CONTROL DE DUPLICADOS ---
+                if url in vistos:
+                    stats["eliminados"] += 1
+                    continue
+                
+                vistos.add(url)
+                resultado_final[carpeta].append(link_obj)
+                stats["organizados"] += 1
+            else:
+                stats["sin_config"] += 1
+
+    # 4. Escribir el archivo
     with open(path_out, 'w', encoding='utf-8') as f:
-        f.write('<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n')
-        escribir_dl(f, resultado)
+        f.write('<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
+                '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
+                '<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n')
+        escribir_dl(f, resultado_final)
         f.write('</DL><p>\n')
 
-    # --- BLOQUE DEL INFORME REINSTALADO ---
+    # --- INFORME ---
     print("\n" + "="*40)
-    print("         INFORME DE PROCESAMIENTO")
+    print("         INFORME DE ORGANIZACIÓN")
     print("="*40)
-    print(f"Total links encontrados:  {stats['procesados']}")
+    print(f"Links procesados:         {stats['procesados']}")
     print(f"Duplicados eliminados:    {stats['eliminados']}")
-    print(f"Links clasificados:       {stats['clasificados']}")
-    print(f"Links sin clasificar:     {stats['sin_clase']}")
+    print(f"Links en nuevo HTML:      {stats['organizados']}")
+    if stats['sin_config'] > 0:
+        print(f"Links no encontrados*:    {stats['sin_config']}")
+        print("(* Nombres que editaste y no coinciden con el original)")
     print("-" * 40)
     print(f"Archivo final: {os.path.basename(path_out)}")
     print("="*40)
