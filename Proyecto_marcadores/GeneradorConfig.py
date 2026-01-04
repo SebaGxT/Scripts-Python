@@ -5,59 +5,114 @@ import ValidadorLinks
 
 def extraer_estructura(soup, resultados_validados=None):
     """
-    Clasifica links en: Activos, Caídos (Borrar) y Bloqueados (Revisar).
+    Clasifica links y empaqueta links sueltos en subcarpetas 'Varios' 
+    si la carpeta raíz contiene subcategorías.
     """
     lineas = []
     caidos_por_carpeta = {}      
     bloqueados_por_carpeta = {}   
-    carpeta_actual = "Raíz"
     
-    # Mapeo de estados para consulta rápida
     mapa_estados = {res['url']: res['estado'] for res in resultados_validados} if resultados_validados else {}
-    elementos = soup.find_all(['h3', 'a'])
     
-    for el in elementos:
-        if el.name == 'h3':
-            carpeta_actual = el.get_text().strip()
-            lineas.append(f"C: {carpeta_actual}")
-        elif el.name == 'a':
-            url = el.get('href', '')
-            nombre = el.get_text().strip().replace(',', '') or url[:30]
-            estado = mapa_estados.get(url, "ACTIVO")
+    # Buscamos las carpetas principales (DL > DT > H3)
+    carpetas_principales = soup.find_all('h3')
+    
+    for h3 in carpetas_principales:
+        carpeta_nombre = h3.get_text().strip()
+        lineas.append(f"C: {carpeta_nombre}")
+        
+        # El contenedor de contenido suele ser el siguiente elemento 'dl'
+        contenedor = h3.find_next('dl')
+        if not contenedor:
+            continue
             
-            # Clasificación según el estado del validador
-            if any(p in estado for p in ["CAIDO", "ERROR"]):
-                if carpeta_actual not in caidos_por_carpeta: 
-                    caidos_por_carpeta[carpeta_actual] = []
-                caidos_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
-            
-            elif "Protegido" in estado or "DUDOSO" in estado:
-                if carpeta_actual not in bloqueados_por_carpeta: 
-                    bloqueados_por_carpeta[carpeta_actual] = []
-                bloqueados_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
-            
-            else:
-                lineas.append(f"    K: {nombre}")
+        # Separamos subcarpetas de links sueltos dentro de esta carpeta
+        elementos_hijos = contenedor.find_all(['h3', 'a'], recursive=False)
+        
+        buffer_links_sueltos = []
+        tiene_subcarpetas = any(el.name == 'h3' for el in elementos_hijos)
 
-    # --- SECCIÓN A: LINKS CAÍDOS (Para Borrar) ---
-    if caidos_por_carpeta:
+        for el in elementos_hijos:
+            if el.name == 'h3':
+                # Si hay links sueltos acumulados antes de esta subcarpeta, los volcamos
+                if buffer_links_sueltos:
+                    lineas.extend(procesar_buffer_sueltos(buffer_links_sueltos, carpeta_nombre, tiene_subcarpetas, mapa_estados, caidos_por_carpeta, bloqueados_por_carpeta))
+                    buffer_links_sueltos = []
+                
+                # Procesar subcarpeta (identada)
+                sub_nombre = el.get_text().strip()
+                lineas.append(f"  C: {sub_nombre}")
+                
+                # Procesar links dentro de la subcarpeta
+                sub_contenedor = el.find_next('dl')
+                if sub_contenedor:
+                    links_sub = sub_contenedor.find_all('a', recursive=False)
+                    for a in links_sub:
+                        lineas.extend(clasificar_link_individual(a, sub_nombre, mapa_estados, caidos_por_carpeta, bloqueados_por_carpeta, identado="    "))
+
+            elif el.name == 'a':
+                buffer_links_sueltos.append(el)
+
+        # Volcar links sueltos restantes al final de la carpeta
+        if buffer_links_sueltos:
+            lineas.extend(procesar_buffer_sueltos(buffer_links_sueltos, carpeta_nombre, tiene_subcarpetas, mapa_estados, caidos_por_carpeta, bloqueados_por_carpeta))
+
+    # --- SECCIONES DE REVISIÓN (Al final del archivo) ---
+    agregar_secciones_revision(lineas, caidos_por_carpeta, bloqueados_por_carpeta)
+        
+    return lineas
+
+def procesar_buffer_sueltos(buffer, nombre_raiz, con_subcarpetas, mapa, caidos, bloqueados):
+    """Decide si meter los links en 'Varios' o dejarlos en la raíz."""
+    resultado = []
+    identado_final = "    "
+    
+    # Si tiene subcarpetas y NO es la barra de favoritos, creamos "Varios"
+    if con_subcarpetas and "Barra" not in nombre_raiz:
+        resultado.append(f"  C: Varios")
+        identado_final = "    "
+    elif "Barra" not in nombre_raiz:
+        identado_final = "    "
+    else:
+        identado_final = "    " # Para la barra principal
+
+    for a in buffer:
+        resultado.extend(clasificar_link_individual(a, nombre_raiz, mapa, caidos, bloqueados, identado=identado_final))
+    return resultado
+
+def clasificar_link_individual(a, carpeta_nombre, mapa_estados, caidos, bloqueados, identado="    "):
+    """Lógica unificada para validar estado y retornar la línea o guardar en revisión."""
+    url = a.get('href', '')
+    nombre = a.get_text().strip().replace(',', '') or url[:30]
+    estado = mapa_estados.get(url, "ACTIVO")
+    res = []
+
+    if any(p in estado for p in ["CAIDO", "ERROR"]):
+        if carpeta_nombre not in caidos: caidos[carpeta_nombre] = []
+        caidos[carpeta_nombre].append(f"{identado}K: {nombre} | {estado} | {url}")
+    elif "Protegido" in estado or "DUDOSO" in estado:
+        if carpeta_nombre not in bloqueados: bloqueados[carpeta_nombre] = []
+        bloqueados[carpeta_nombre].append(f"{identado}K: {nombre} | {estado} | {url}")
+    else:
+        res.append(f"{identado}K: {nombre}")
+    return res
+
+def agregar_secciones_revision(lineas, caidos, bloqueados):
+    if caidos:
         lineas.append("\n" + "!"*45)
         lineas.append("C: REVISAR - LINKS CAIDOS (PROBABLE BORRADO)")
         lineas.append("!"*45)
-        for origen, links in caidos_por_carpeta.items():
+        for origen, links in caidos.items():
             lineas.append(f"  C: Origen Caído - {origen}")
             lineas.extend(links)
 
-    # --- SECCIÓN B: LINKS BLOQUEADOS (Probablemente Activos) ---
-    if bloqueados_por_carpeta:
+    if bloqueados:
         lineas.append("\n" + "?"*45)
         lineas.append("C: REVISAR - LINKS BLOQUEADOS (VERIFICAR MANUAL)")
         lineas.append("?"*45)
-        for origen, links in bloqueados_por_carpeta.items():
+        for origen, links in bloqueados.items():
             lineas.append(f"  C: Origen Bloqueado - {origen}")
             lineas.extend(links)
-        
-    return lineas
 
 def obtener_lista_para_validar(soup):
     """Extrae una lista de diccionarios para el validador."""
