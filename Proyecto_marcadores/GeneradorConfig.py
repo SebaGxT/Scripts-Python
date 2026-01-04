@@ -8,10 +8,11 @@ def extraer_estructura(soup, resultados_validados=None):
     Clasifica links en: Activos, Caídos (Borrar) y Bloqueados (Revisar).
     """
     lineas = []
-    caidos_por_carpeta = {}      # Links con errores 404, 500, etc.
-    bloqueados_por_carpeta = {}   # Links con 400, 403 (ej. WhatsApp)
+    caidos_por_carpeta = {}      
+    bloqueados_por_carpeta = {}   
     carpeta_actual = "Raíz"
     
+    # Mapeo de estados para consulta rápida
     mapa_estados = {res['url']: res['estado'] for res in resultados_validados} if resultados_validados else {}
     elementos = soup.find_all(['h3', 'a'])
     
@@ -24,13 +25,15 @@ def extraer_estructura(soup, resultados_validados=None):
             nombre = el.get_text().strip().replace(',', '') or url[:30]
             estado = mapa_estados.get(url, "ACTIVO")
             
-            # --- CLASIFICACIÓN TRIPLE ---
+            # Clasificación según el estado del validador
             if any(p in estado for p in ["CAIDO", "ERROR"]):
-                if carpeta_actual not in caidos_por_carpeta: caidos_por_carpeta[carpeta_actual] = []
+                if carpeta_actual not in caidos_por_carpeta: 
+                    caidos_por_carpeta[carpeta_actual] = []
                 caidos_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
             
             elif "Protegido" in estado or "DUDOSO" in estado:
-                if carpeta_actual not in bloqueados_por_carpeta: bloqueados_por_carpeta[carpeta_actual] = []
+                if carpeta_actual not in bloqueados_por_carpeta: 
+                    bloqueados_por_carpeta[carpeta_actual] = []
                 bloqueados_por_carpeta[carpeta_actual].append(f"    K: {nombre} | {estado} | {url}")
             
             else:
@@ -66,65 +69,77 @@ def obtener_lista_para_validar(soup):
         })
     return marcadores
 
-def main(path_html_directo=None):
-    if path_html_directo:
-        path_in = path_html_directo
-        base_dir = os.path.dirname(os.path.abspath(path_in))
-        path_conf = os.path.join(base_dir, "config_GENERADO.txt")
-        print(f"\n⏳ Generando configuración para: {os.path.basename(path_in)}")
-    else:
-        path_in, path_conf, _ = gestionar_rutas("generador")
+def main(input_data=None):
+    """
+    input_data puede ser una ruta (str) o una lista de rutas (list).
+    """
+    # Convertimos a lista si viene un solo archivo
+    rutas_html = [input_data] if isinstance(input_data, str) else input_data
     
-    if not path_in or not os.path.exists(path_in):
-        print(f"\n❌ No se encontró el archivo de entrada en: {path_in}")
+    if not rutas_html:
+        print("\n❌ No hay archivos para procesar.")
         return
+
+    todas_las_sopas = []
+    print(f"\n📖 Cargando {len(rutas_html)} archivo(s) HTML...")
+    
+    for r in rutas_html:
+        try:
+            with open(r, 'r', encoding='utf-8', errors='ignore') as f:
+                todas_las_sopas.append({
+                    'nombre': os.path.basename(r),
+                    'soup': BeautifulSoup(f, 'html.parser')
+                })
+        except Exception as e:
+            print(f"\n⚠️ Error leyendo {r}: {e}")
+
+    # --- LÓGICA DE VALIDACIÓN ---
+    resultados = None
+    respuesta = input("\n¿Deseas validar si los links están caídos? (S/N): ").lower()
+    
+    if respuesta == 's':
+        lista_preparada = []
+        for item in todas_las_sopas:
+            lista_preparada.extend(obtener_lista_para_validar(item['soup']))
+        
+        # Eliminamos duplicados por URL antes de validar para ir más rápido
+        lista_unica = list({m['url']: m for m in lista_preparada}.values())
+        
+        print(f"\n📦 Total de links únicos a verificar: {len(lista_unica)}")
+        print("\n1. Modo Paciente (Barra gráfica) | 2. Modo Turbo (Rápido)")
+        modo = input("\nSelecciona modo (1/2): ")
+        
+        if modo == '2':
+            resultados = ValidadorLinks.validar_lista_modo_turbo(lista_unica)
+        else:
+            resultados = ValidadorLinks.validar_lista_modo_paciente(lista_unica)
+
+    # --- GENERACIÓN DEL CONFIG.TXT ---
+    print(f"\n⏳ Generando estructura unificada...")
+    lineas_totales = [
+        "# ARCHIVO DE CONFIGURACIÓN GENERADO",
+        "# Instrucciones: Edita y renombra a 'config.txt' para el Organizador.",
+        f"# Total de archivos fusionados: {len(todas_las_sopas)}\n"
+    ]
+    
+    for item in todas_las_sopas:
+        lineas_totales.append(f"\n{'='*45}")
+        lineas_totales.append(f"# CONTENIDO DE: {item['nombre']}")
+        lineas_totales.append(f"{'='*45}")
+        lineas_totales.extend(extraer_estructura(item['soup'], resultados))
+
+    # Guardamos donde esté el primer archivo seleccionado
+    path_conf = os.path.join(os.path.dirname(os.path.abspath(rutas_html[0])), "config_GENERADO.txt")
     
     try:
-        # Usamos errors='ignore' para evitar que caracteres raros rompan la lectura
-        with open(path_in, 'r', encoding='utf-8', errors='ignore') as f:
-            soup = BeautifulSoup(f, 'html.parser')
-        
-        dl_principal = soup.find('dl') or soup.find('DL')
-
-        if not dl_principal:
-            print("\n❌ No se encontró estructura de marcadores (falta etiqueta DL).")
-            return
-
-        resultados = None
-        respuesta = input("\n¿Deseas validar si los links están caídos? (S/N): ").lower()
-        
-        if respuesta == 's':
-            lista_preparada = obtener_lista_para_validar(dl_principal)
-            print(f"📦 Total de links a verificar: {len(lista_preparada)}")
-            print("\n1. Modo Paciente (Barra gráfica)")
-            print("2. Modo Turbo (Rápido)")
-            modo = input("\nSelecciona modo (1/2): ")
-            
-            if modo == '2':
-                resultados = ValidadorLinks.validar_lista_modo_turbo(lista_preparada)
-            else:
-                resultados = ValidadorLinks.validar_lista_modo_paciente(lista_preparada)
-
-        print(f"\n⏳ Analizando estructura y guardando borrador...")
-        
-        estructura = extraer_estructura(dl_principal, resultados)
-        
-        if not estructura:
-            print("\n⚠️ No se pudieron extraer marcadores del archivo.")
-            return
-
         with open(path_conf, 'w', encoding='utf-8') as f:
-            f.write("# ARCHIVO DE CONFIGURACIÓN GENERADO\n")
-            f.write("# Instrucciones: Edita las carpetas (C:) y nombres (K:).\n")
-            f.write("# Luego renombra este archivo a 'config.txt' para el Organizador.\n\n")
-            f.write("\n".join(estructura))
+            f.write("\n".join(lineas_totales))
         
-        print(f"\n✅ ¡Borrador creado con éxito!")
-        print(f"📂 Ubicación: {path_conf}")
-        print("\n👉 Siguiente paso: Revisa el .txt, elimina lo que no quieras y ejecuta el Organizador.")
-
+        print(f"\n✅ ¡Proceso completado!")
+        print(f"📂 Archivo borrador creado en: {path_conf}")
+        print("\n👉 Próximo paso: Edita el archivo y luego ejecuta el Organizador.")
     except Exception as e:
-        print(f"\n❌ Error crítico en el Generador: {e}")
+        print(f"\n❌ Error al escribir el config: {e}")
 
 if __name__ == "__main__":
     main()

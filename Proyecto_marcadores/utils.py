@@ -1,16 +1,30 @@
 import os
+import tkinter as tk
+from tkinter import filedialog
+
+def seleccionar_archivos_html():
+    """Abre una ventana para seleccionar uno o varios archivos HTML."""
+    root = tk.Tk()
+    root.withdraw()
+    # allowmultiple=True es la clave aquí
+    rutas = filedialog.askopenfilenames(
+        title="Selecciona uno o más archivos HTML de marcadores",
+        filetypes=[("Archivos HTML", "*.html"), ("Todos los archivos", "*.*")]
+    )
+    root.destroy()
+    return list(rutas) # Devolvemos una lista de rutas
 
 def validar_netscape(path):
     """Verifica existencia y formato del archivo."""
     if not os.path.exists(path):
-        return False, "❌ Error: El archivo no existe."
+        return False, "\n❌ Error: El archivo no existe."
     try:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             primera_linea = f.readline()
             if "NETSCAPE-Bookmark-file-1" not in primera_linea:
-                return False, "❌ Error: No es un archivo de marcadores válido."
+                return False, "\n❌ Error: No es un archivo de marcadores válido."
     except Exception as e:
-        return False, f"❌ Error al leer: {e}"
+        return False, f"\n❌ Error al leer: {e}"
     return True, "OK"
 
 def gestionar_rutas(tipo_herramienta):
