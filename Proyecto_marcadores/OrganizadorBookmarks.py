@@ -4,53 +4,26 @@ from bs4 import BeautifulSoup
 from utils import gestionar_rutas
 
 def normalizar(texto):
-    """
-    La clave del éxito: Quita símbolos, espacios y pone en minúsculas.
-    Esto hace que 'Google, el buscador' sea igual a 'googleelbuscador'.
-    """
     if not texto: return ""
-    # Quitamos acentos y caracteres especiales, dejamos solo letras y números
-    texto = texto.lower()
-    return re.sub(r'[^a-z0-9]', '', texto)
+    return re.sub(r'[^a-z0-9]', '', texto.lower())
 
-def parse_config(config_path):
-    tree = {}
-    carpeta_actual = "00. Sin Clasificar"
-    if not os.path.exists(config_path): return None
+def escribir_recursivo(f, nombre, contenido, nivel=1):
+    """Escribe la estructura DL/DT respetando niveles y cierres."""
+    indent = "    " * nivel
+    f.write(f'{indent}<DT><H3>{nombre}</H3>\n')
+    f.write(f'{indent}<DL><p>\n')
     
-    with open(config_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"): continue
-            
-            if line.startswith("C: "):
-                carpeta_actual = line[3:].strip()
-                if carpeta_actual not in tree:
-                    tree[carpeta_actual] = []
-            elif line.startswith("K: "):
-                contenido = line[3:].strip()
-                partes = [p.strip() for p in contenido.split('|')]
-                
-                nombre_en_config = partes[0]
-                # Si hay validador, la URL está al final. Si no, intentamos capturarla.
-                url_en_config = partes[-1] if len(partes) > 1 and "http" in partes[-1] else None
-                
-                if carpeta_actual not in tree: tree[carpeta_actual] = []
-                tree[carpeta_actual].append({
-                    'nombre': nombre_en_config,
-                    'url_posible': url_en_config
-                })
-    return tree
+    # 1. Links de esta carpeta
+    for link_obj in contenido["links"]:
+        f.write(f'{indent}    <DT>{str(link_obj)}\n')
+    
+    # 2. Subcarpetas (Recursión)
+    for sub_nombre, sub_contenido in contenido["subcarpetas"].items():
+        escribir_recursivo(f, sub_nombre, sub_contenido, nivel + 1)
+        
+    f.write(f'{indent}</DL><p>\n')
 
-def escribir_dl(f, resultado):
-    for carpeta, links in resultado.items():
-        if not links: continue
-        f.write(f'    <DT><H3>{carpeta}</H3>\n    <DL><p>\n')
-        for link in links:
-            f.write(f'        <DT>{str(link)}\n')
-        f.write(f'    </DL><p>\n')
-
-def main(path_html_directo=None):
+def main(path_html_directo=None): # Corregido: Ahora acepta el argumento
     if path_html_directo:
         path_in = path_html_directo
         base_dir = os.path.dirname(os.path.abspath(path_in))
@@ -60,84 +33,80 @@ def main(path_html_directo=None):
         path_in, path_config, path_out = gestionar_rutas("organizador")
 
     if not path_in or not os.path.exists(path_config):
-        print(f"❌ Error: Archivos no encontrados.")
+        print("❌ Error: No se encontraron los archivos necesarios.")
         return
 
-    mapeo_deseado = parse_config(path_config)
-    
+    # 1. Cargar Biblioteca
     with open(path_in, 'r', encoding='utf-8', errors='ignore') as f:
         soup = BeautifulSoup(f, 'html.parser')
-    
-    # --- BIBLIOTECAS DE BÚSQUEDA ---
-    biblio_urls = {}
-    biblio_nombres_norm = {} # Usamos nombres normalizados como clave
-    
-    for a in soup.find_all('a'):
-        url_html = a.get('href', '')
-        nombre_html_norm = normalizar(a.get_text())
-        
-        biblio_urls[url_html] = a
-        if nombre_html_norm:
-            biblio_nombres_norm[nombre_html_norm] = a
+    biblio_urls = {a.get('href', ''): a for a in soup.find_all('a')}
+    biblio_norm = {normalizar(a.get_text()): a for a in soup.find_all('a')}
 
+    # 2. Construir Árbol mientras leemos el Config
+    arbol = {}
     vistos = set()
-    resultado_final = {}
-    stats = {"procesados": 0, "eliminados": 0, "organizados": 0, "sin_config": 0}
+    stats = {"procesados": 0, "organizados": 0, "eliminados": 0, "fail": 0}
+    punto_insercion = {"links": [], "subcarpetas": {}}
 
-    # --- PROCESO DE EMPAREJAMIENTO ---
-    
-    for carpeta, items_config in mapeo_deseado.items():
-        resultado_final[carpeta] = []
-        for item in items_config:
-            stats["procesados"] += 1
-            nombre_cfg = item['nombre']
-            nombre_cfg_norm = normalizar(nombre_cfg)
-            url_cfg = item['url_posible']
+    with open(path_config, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"): continue
             
-            link_obj = None
-            
-            # 1. Intentar por URL exacta (lo más seguro)
-            if url_cfg and url_cfg in biblio_urls:
-                link_obj = biblio_urls[url_cfg]
-            
-            # 2. Intentar por Nombre Normalizado (ignora símbolos/comas/espacios)
-            if not link_obj and nombre_cfg_norm:
-                link_obj = biblio_nombres_norm.get(nombre_cfg_norm)
-            
-            # 3. Intentar por coincidencia parcial (URLs cortadas en el config)
-            if not link_obj:
-                for url_h, obj in biblio_urls.items():
-                    if url_h.startswith(nombre_cfg):
-                        link_obj = obj
-                        break
-
-            if link_obj:
-                url_final = link_obj.get('href')
-                if url_final in vistos:
-                    stats["eliminados"] += 1
-                    continue
+            if line.startswith("C: "):
+                nombre_raw = line[3:].strip()
+                # Regla para agrupar revisiones
+                if "Origen" in nombre_raw or "REVISAR" in nombre_raw:
+                    ruta = ["REVISIÓN DE LINKS", nombre_raw]
+                else:
+                    ruta = [p.strip() for p in nombre_raw.split('/') if p.strip()]
                 
-                vistos.add(url_final)
-                resultado_final[carpeta].append(link_obj)
-                stats["organizados"] += 1
-            else:
-                stats["sin_config"] += 1
+                # Navegación profunda en el árbol
+                nodo = arbol
+                for p in ruta:
+                    if p not in nodo:
+                        nodo[p] = {"links": [], "subcarpetas": {}}
+                    punto_insercion = nodo[p]
+                    nodo = nodo[p]["subcarpetas"]
+                
+            elif line.startswith("K: "):
+                stats["procesados"] += 1
+                partes_k = [p.strip() for p in line[3:].split('|')]
+                nombre_k = partes_k[0]
+                url_k = partes_k[-1] if len(partes_k) > 1 else None
+                
+                link_obj = biblio_urls.get(url_k) or biblio_norm.get(normalizar(nombre_k))
+                
+                if link_obj:
+                    url_final = link_obj.get('href')
+                    if url_final not in vistos:
+                        vistos.add(url_final)
+                        punto_insercion["links"].append(link_obj)
+                        stats["organizados"] += 1
+                    else:
+                        stats["eliminados"] += 1
+                else:
+                    stats["fail"] += 1
 
-    # --- ESCRITURA ---
+    # 3. Escribir HTML
     with open(path_out, 'w', encoding='utf-8') as f:
         f.write('<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
                 '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
                 '<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n')
-        escribir_dl(f, resultado_final)
+        
+        for n_raiz, cont in arbol.items():
+            escribir_recursivo(f, n_raiz, cont)
+            
         f.write('</DL><p>\n')
 
+    # --- INFORME ---
     print("\n" + "="*40)
     print("         INFORME DE ORGANIZACIÓN")
     print("="*40)
     print(f"Links procesados:           {stats['procesados']}")
     print(f"Links rescatados (OK):      {stats['organizados']}")
     print(f"Duplicados omitidos:        {stats['eliminados']}")
-    print(f"No encontrados (Perdidos):  {stats['sin_config']}")
+    print(f"No encontrados (Perdidos):  {stats['fail']}")
     print("-" * 40)
     print(f"Archivo: {os.path.basename(path_out)}")
     print("="*40)
