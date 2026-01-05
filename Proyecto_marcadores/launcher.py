@@ -91,31 +91,38 @@ def menu():
 
         elif op == "3":
             if herramientas["organizador"] and lista_paths:
-                # 1. Obtenemos la carpeta donde está tu primer HTML seleccionado
                 carpeta_html = os.path.dirname(os.path.abspath(lista_paths[0]))
                 
-                # 2. Buscamos el config.txt específicamente en ESA carpeta
-                ruta_config = os.path.join(carpeta_html, "config.txt")
+                # Buscamos el config (ya sea el original o el generado)
+                ruta_final = os.path.join(carpeta_html, "config.txt")
+                ruta_generada = os.path.join(carpeta_html, "config_GENERADO.txt")
                 
-                if os.path.exists(ruta_config):
-                    import OrganizadorBookmarks
+                if not os.path.exists(ruta_final) and os.path.exists(ruta_generada):
+                    os.rename(ruta_generada, ruta_final)
+
+                if os.path.exists(ruta_final):
+                    directorio_original = os.getcwd()
                     try:
-                        # Le pasamos la lista de archivos al organizador
-                        OrganizadorBookmarks.main(lista_paths)
-                    except KeyboardInterrupt:
-                        print("\n\n [!] Organización cancelada. Regresando al menú...")
+                        # 1. Cambiamos a la carpeta del HTML
+                        os.chdir(carpeta_html)
+                        
+                        # 2. Importación segura
+                        import importlib
+                        import OrganizadorBookmarks
+                        importlib.reload(OrganizadorBookmarks) # Asegura que tome cambios
+                        
+                        # 3. Llamada inyectando el primer HTML de la lista
+                        print(f"\n🚀 Iniciando organización de: {os.path.basename(lista_paths[0])}")
+                        OrganizadorBookmarks.main(lista_paths[0])
+                        
                     except Exception as e:
-                        print(f"\n❌ Error en el Organizador: {e}")
-                else: 
-                    print(f"\n⚠️ No se encontró 'config.txt' en la carpeta de tus marcadores:")
-                    print(f"📍 Buscado en: {carpeta_html}")
-                    print("\n👉 RECUERDA: Debes renombrar 'config_GENERADO.txt' a 'config.txt' en esa carpeta.")
-            
-            elif not herramientas["organizador"]: 
-                print("\n❌ Script 'OrganizadorBookmarks.py' no encontrado.")
-            else: 
-                print("\n⚠️ Selecciona al menos un HTML primero (Opción 1).")
-            
+                        print(f"\n❌ Error durante la ejecución: {e}")
+                    finally:
+                        os.chdir(directorio_original)
+                else:
+                    print(f"\n⚠️ No se encontró 'config.txt' en {carpeta_html}")
+            else:
+                print("\n⚠️ Selecciona archivos (Opción 1) y asegúrate de tener el script.")
             input("\nPresiona Enter para continuar...")
 
         elif op == "4":
