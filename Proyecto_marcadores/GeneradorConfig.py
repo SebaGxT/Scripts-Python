@@ -4,104 +4,75 @@ from utils import gestionar_rutas, validar_netscape
 import ValidadorLinks
 
 def extraer_estructura(soup, resultados_validados=None):
-    """
-    Analiza el HTML y organiza los links. 
-    Si una carpeta tiene subcarpetas, mueve los links sueltos a 'Varios'.
-    """
     lineas = []
     caidos_por_carpeta = {}      
     bloqueados_por_carpeta = {}   
     
     mapa_estados = {res['url']: res['estado'] for res in resultados_validados} if resultados_validados else {}
-    
-    # 1. Buscamos todas las carpetas (H3)
     carpetas_principales = soup.find_all('h3')
     
     for h3 in carpetas_principales:
         carpeta_nombre = h3.get_text().strip()
         lineas.append(f"C: {carpeta_nombre}")
-        
         contenedor = h3.find_next('dl')
-        if not contenedor:
-            continue
+        if not contenedor: continue
             
-        # Buscamos elementos dentro de esta carpeta
         todos_los_items = contenedor.find_all(['h3', 'a'], recursive=True)
-        
         buffer_links_sueltos = []
         subcarpetas_encontradas = []
 
         for el in todos_los_items:
-            # Solo procesar si pertenecen directamente a este contenedor
-            if el.find_parent('dl') != contenedor:
-                continue
-                
+            if el.find_parent('dl') != contenedor: continue
             if el.name == 'h3':
                 subcarpetas_encontradas.append(el)
             elif el.name == 'a':
                 buffer_links_sueltos.append(el)
 
         tiene_subcarpetas = len(subcarpetas_encontradas) > 0
-
-        # LLAMADA A LA FUNCIÓN CRUCIAL
         if buffer_links_sueltos:
             lineas.extend(procesar_buffer_sueltos(buffer_links_sueltos, carpeta_nombre, tiene_subcarpetas, mapa_estados, caidos_por_carpeta, bloqueados_por_carpeta))
 
-    # --- SECCIONES DE REVISIÓN (Tus mensajes originales) ---
-    if caidos_por_carpeta:
-        lineas.append("\n" + "!"*45)
-        lineas.append("C: REVISAR - LINKS CAIDOS (PROBABLE BORRADO)")
-        lineas.append("!"*45)
-        for origen, links in caidos_por_carpeta.items():
-            lineas.append(f"  C: Origen Caído - {origen}")
-            lineas.extend(links)
-
-    if bloqueados_por_carpeta:
-        lineas.append("\n" + "?"*45)
-        lineas.append("C: REVISAR - LINKS BLOQUEADOS (VERIFICAR MANUAL)")
-        lineas.append("?"*45)
-        for origen, links in bloqueados_por_carpeta.items():
-            lineas.append(f"  C: Origen Bloqueado - {origen}")
-            lineas.extend(links)
+    # Re-insertamos la llamada a la función de revisión al final
+    agregar_secciones_revision(lineas, caidos_por_carpeta, bloqueados_por_carpeta)
         
     return lineas
 
 def procesar_buffer_sueltos(buffer, nombre_raiz, con_subcarpetas, mapa, caidos, bloqueados):
-    """
-    Esta es la función que pediste: empaqueta links en 'Varios' 
-    solo si la carpeta raíz tiene subcarpetas.
-    """
     resultado = []
     identado_final = "    "
-    
-    # Si tiene subcarpetas y NO es la barra de favoritos, creamos la subcarpeta "Varios"
     if con_subcarpetas and "Barra" not in nombre_raiz:
         resultado.append(f"  C: Varios")
         identado_final = "    "
-    
     for a in buffer:
         resultado.extend(clasificar_link_individual(a, nombre_raiz, mapa, caidos, bloqueados, identado=identado_final))
-    
     return resultado
 
 def clasificar_link_individual(a, carpeta_nombre, mapa_estados, caidos, bloqueados, identado="    "):
-    """Lógica para filtrar links activos, caídos o protegidos."""
+    """Lógica para filtrar links y guardar la URL completa como respaldo."""
     url = a.get('href', '')
-    nombre = a.get_text().strip().replace(',', '') or url[:30]
+    nombre_original = a.get_text().strip()
+    
+    # Si no tiene nombre, usamos la URL completa
+    nombre = nombre_original if nombre_original else url
     estado = mapa_estados.get(url, "ACTIVO")
+    
+    # Formato: Nombre | Estado | URL (El Organizador usará esto para no perder nada)
+    linea_con_url = f"{identado}K: {nombre} | {estado} | {url}"
     
     if any(p in estado for p in ["CAIDO", "ERROR"]):
         if carpeta_nombre not in caidos: caidos[carpeta_nombre] = []
-        caidos[carpeta_nombre].append(f"{identado}K: {nombre} | {estado} | {url}")
+        caidos[carpeta_nombre].append(linea_con_url)
         return []
     elif "Protegido" in estado or "DUDOSO" in estado:
         if carpeta_nombre not in bloqueados: bloqueados[carpeta_nombre] = []
-        bloqueados[carpeta_nombre].append(f"{identado}K: {nombre} | {estado} | {url}")
+        bloqueados[carpeta_nombre].append(linea_con_url)
         return []
     else:
-        return [f"{identado}K: {nombre}"]
+        # IMPORTANTE: Incluimos la URL también en los activos para el Organizador
+        return [f"{identado}K: {nombre} | {url}"]
 
 def agregar_secciones_revision(lineas, caidos, bloqueados):
+    """Genera los bloques de texto para revisión manual al final del archivo."""
     if caidos:
         lineas.append("\n" + "!"*45)
         lineas.append("C: REVISAR - LINKS CAIDOS (PROBABLE BORRADO)")
